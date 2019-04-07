@@ -7,16 +7,18 @@ import time
 import json
 import re
 
+# AIOHTTP?
+
 client = discord.Client()
 
 # Commands:
 # respond to gwent link
-# !player or !profile [gogname]
+# !player [gogname] or !profile [gogname]
 # !top10 open - open
 # !top10 challenger - challenger
-# !top10 masters - masters
-# !rankings - open, challenger and masters rankings same as !top10masters
-# !prorank - top mmr
+# !top10 worldmasters - world masters
+# !rankings - open, challenger and masters rankings same as !top10 worldmasters
+# !prorank - top 5 mmr
 
 # maybe:
 # !tournaments - tournament schedule
@@ -24,9 +26,6 @@ client = discord.Client()
 # !news
 # !latestnews
 # add try/excepts, e.g. 'aggedon user profile'
-
-# ideas:
-# change embed color for faction
 
 masters_logo_url = 'https://i.imgur.com/J37iggL.png'
 playgwent_icon_url = 'https://i.imgur.com/ibtR9s0.png'
@@ -36,39 +35,43 @@ skellige_cardback = 'https://i.imgur.com/8BwvANF.png'
 northern_cardback = 'https://i.imgur.com/iVbOhbS.png'
 scoiatel_cardback = 'https://i.imgur.com/Lx0cmbt.png'
 
+# async def fetch(session, url):
+#     async with session.get(url) as response:
+#         return await response.text()
 
-def parse(link):
+
+# async def soupify(url):
+#     async with aiohttp.ClientSession() as session:
+#         html = await fetch(session, url)
+#         soup = BeautifulSoup(html, "html5lib")
+
+#     return await soup
+
+def status(link):
+    r = requests.get(link, timeout=5)
+    return str(r.status_code)
+
+
+def soupify(link):
     r = requests.get(link, timeout=5)
     soup = BeautifulSoup(r.content, "html5lib")
 
     return soup
 
-# fix to parse()
-def parsequot(link):
-    r = requests.get(link, timeout=5)
-    soup = BeautifulSoup(r.content, "html5lib").findAll("div", {"data-state": True})
-
-    string_link = str(soup)
-    json_file = string_link.replace('&quot;', '"')
-    json_file = json_file.split('data-state="', maxsplit=1)[-1]
-    json_file = json_file.split('" data-translations', maxsplit=1)[0]
-
-    json_file = json.loads(json_file)
-
-    return json_file
-
 def getCountry(code):
     return pycountry.countries.get(alpha_2=code).name
 
+
 def getLink(string):
     link = re.search("(?P<url>https?://[^\s]+)", string).group("url")
+        
     return link
 
+
 def getProRank():
-    soup = parse('https://masters.playgwent.com/en/rankings/pro-rank')
+    soup = soupify('https://masters.playgwent.com/en/rankings/pro-rank')
     prorank_description = soup.find('li', {'class': 'current'}).text.strip().lower().capitalize()
-    soup = soup.find('div', {
-        'class': 'c-ranking-table__body c-ranking-table__body--hover'}).findAll('div', {'class': 'c-ranking-table__tr'})
+    soup = soup.find('div', {'class': 'c-ranking-table__body c-ranking-table__body--hover'}).findAll('div', {'class': 'c-ranking-table__tr'})
 
     prorank_url = 'https://masters.playgwent.com/en/rankings/pro-rank'
 
@@ -113,7 +116,7 @@ def getProRank():
             data[n][3], data[n][2], data[n][4], data[n][5], data[n][6], data[n][7], data[n][8])
         embed.add_field(name=top_label, value=bottom_label, inline=False)
 
-    embed.set_footer(text="Pro Rank - {} at {}".format(time.strftime('%A'), time.strftime('%X')),
+    embed.set_footer(text="Pro Rank",
                      icon_url=masters_logo_url)
 
     return embed
@@ -123,7 +126,6 @@ def getRankings(tournament):
     copper = 'copper'
     silver = 'silver'
     gold = 'gold'
-    rankings_url = ''
 
     if tournament == 'Open':
         rankings_url = 'https://masters.playgwent.com/en/rankings/crown-open'
@@ -141,30 +143,23 @@ def getRankings(tournament):
         rankings_url = 'https://masters.playgwent.com/en/rankings/crown-masters'
         gold = 'gold is-active'
 
-    soup = parse(rankings_url)
+    soup = soupify(rankings_url)
 
-    rankings = soup.find('div', {'class': 'c-ranking-table c-ranking-table--big-crown on-desktop'}).findAll('div', {
-        'class': 'c-ranking-table__tr'})
+    rankings = soup.find('div', {'class': 'c-ranking-table c-ranking-table--big-crown on-desktop'}).findAll('div', {'class': 'c-ranking-table__tr'})
 
     player_stats = [[] for n in range(11)]
     for num in range(10):
             # country
-            country_code = str(rankings[num]).split(
-                'flag-icon-', 1)[-1].split('"', 1)[0].upper()
-            player_stats[num].append(
-                pycountry.countries.get(alpha_2=country_code).name)
+            country_code = str(rankings[num]).split('flag-icon-', 1)[-1].split('"', 1)[0].upper()
+            player_stats[num].append(getCountry(country_code))
 
             # nickname
-            player_stats[num].append(rankings[num].find(
-                'div', {'class': 'td-nick'}).find('strong').text)
+            player_stats[num].append(rankings[num].find('div', {'class': 'td-nick'}).find('strong').text)
 
             # copper = open, silver = challenger, gold = masters score
-            player_stats[num].append(rankings[num].find(
-                'div', {'class': copper}).find('strong').text)
-            player_stats[num].append(rankings[num].find(
-                'div', {'class': silver}).find('strong').text)
-            player_stats[num].append(rankings[num].find(
-                'div', {'class': gold}).find('strong').text)
+            player_stats[num].append(rankings[num].find('div', {'class': copper}).find('strong').text)
+            player_stats[num].append(rankings[num].find('div', {'class': silver}).find('strong').text)
+            player_stats[num].append(rankings[num].find('div', {'class': gold}).find('strong').text)
 
     description = 'Top players in crown points in Gwent {}'.format(tournament)
 
@@ -176,7 +171,7 @@ def getRankings(tournament):
     embed.set_thumbnail(url=masters_logo_url)
 
     if tournament == 'Open':
-        for num in range(0, 10):
+        for num in range(10):
             top_label = '{}. {} ~ ***{}***'.format(
                 num + 1, player_stats[num][0], player_stats[num][1])
             bottom_label = 'Open: **{}** - Challenger: {} - World Masters: {}\n'.format(
@@ -184,7 +179,7 @@ def getRankings(tournament):
             embed.add_field(name=top_label, value=bottom_label, inline=False)
 
     if tournament == 'Challenger':
-        for num in range(0, 10):
+        for num in range(10):
             top_label = '{}. {} ~ ***{}***'.format(
                 num + 1, player_stats[num][0], player_stats[num][1])
             bottom_label = 'Open: {} - Challenger: **{}** - World Masters: {}\n'.format(
@@ -192,7 +187,7 @@ def getRankings(tournament):
             embed.add_field(name=top_label, value=bottom_label, inline=False)
 
     if tournament == 'World Masters':
-        for num in range(0, 10):
+        for num in range(10):
             top_label = '{}. {} ~ ***{}***'.format(
                 num + 1, player_stats[num][0], player_stats[num][1])
             bottom_label = 'Open: {} - Challenger: {} - World Masters: **{}**\n'.format(
@@ -200,28 +195,28 @@ def getRankings(tournament):
             embed.add_field(name=top_label, value=bottom_label, inline=False)
 
     if tournament == 'Rankings':
-        for num in range(0, 10):
+        for num in range(10):
             top_label = '{}. {} ~ ***{}***'.format(
                 num + 1, player_stats[num][0], player_stats[num][1])
             bottom_label = 'Open: {} - Challenger: {} - World Masters: {}\n'.format(
                 player_stats[num][2], player_stats[num][3], player_stats[num][4])
             embed.add_field(name=top_label, value=bottom_label, inline=False)
 
-    embed.set_footer(text="Crown Points - {} at {}".format(time.strftime('%A'), time.strftime('%X')),
+    embed.set_footer(text="Crown Points",
                      icon_url=masters_logo_url)
 
     return embed
 
+
 def getPlayGwentProfile(message, array_start):
     profile = message.content[array_start:]
     link_url = 'https://www.playgwent.com/en/profile/' + profile
-    soup = parse(link_url)
+    soup = soupify(link_url)
 
     # add private player
     avatar_private_url = 'https://i.imgur.com/6wreE6h.png'
 
-    #parsed variables
-    # avatar_url gives error in users like 'freddybabes'
+    # see's if profile is private - fix for not existing players
     try:
         profile_data_wins = json.loads(str(soup).split('var profileDataWins = ', 1)[-1].split(';', 1)[0])
     except:
@@ -229,13 +224,15 @@ def getPlayGwentProfile(message, array_start):
         embed.set_author(name="PlayGwent Profile", url=link_url,icon_url=masters_logo_url)
         embed.set_thumbnail(url=avatar_private_url)
         embed.add_field(name='Description:',value='Player {} has set their player profile to private mode. Only {} is able to view it.'.format(profile, profile), inline=True)
-        embed.set_footer(text="PlayGwent - Profile - {} at {}".format(time.strftime('%A'), time.strftime('%X')), icon_url=masters_logo_url)
+        embed.set_footer(text="PlayGwent - Profile", icon_url=masters_logo_url)
 
         return embed
 
+    
     avatar_url = soup.find('div', {'class': 'l-player-details__avatar'}).find('img')['src']
-    if avatar_url == 'https://cdn-l-playgwent.cdprojektred.com/avatars/48071.jpg':
-        avatar_url = avatar_private_url
+    if status(avatar_url) == '404':
+        avatar_url = 'https://i.imgur.com/6wreE6h.png'
+    
 
     playername = soup.find('strong', {'class': 'l-player-details__name'}).text.strip()
     rank = soup.find('span', {'class': 'l-player-details__rank'}).text
@@ -260,7 +257,7 @@ def getPlayGwentProfile(message, array_start):
         faction += name+'\n'
 
     currentwins = []
-    for num in range(0, len(profile_data_wins['factions'])):
+    for num in range(len(profile_data_wins['factions'])):
         currentwins.append((profile_data_current['factions'][num]['count']))
         currentwins.sort(reverse=True)
 
@@ -282,7 +279,7 @@ def getPlayGwentProfile(message, array_start):
         # Current Ranked Season - Stats
         current_ranked_soup = soup.find('table', {'class': 'c-statistics-table current-ranked'}).findAll('tr')
     except:
-        embed.set_footer(text="PlayGwent - Profile - {} at {}".format(time.strftime('%A'), time.strftime('%X')), icon_url=masters_logo_url)
+        embed.set_footer(text="PlayGwent - Profile", icon_url=masters_logo_url)
         return embed
 
     matches = int(soup.find('span', {'class': 'profile-matches'}).find('strong').text.split(' matches', 1)[0])
@@ -307,15 +304,22 @@ def getPlayGwentProfile(message, array_start):
     embed.add_field(name='-', value=current_count, inline=True)
     embed.add_field(name='Faction:', value=factions_fmmr, inline=True)
     embed.add_field(name='-', value=fmmr, inline=True)
-    embed.set_footer(text="PlayGwent - Profile - {} at {}".format(time.strftime('%A'), time.strftime('%X')), icon_url=masters_logo_url)
+    embed.set_footer(text="PlayGwent - Profile", icon_url=masters_logo_url)
 
     return embed
 
+
 def getPlayGwentDeck(message):
     deck_url = getLink(message.content)
-    json_file = parsequot(deck_url)
 
-    playgwent_deck = [[] for n in range(0, len(json_file['guide']['deck']['cards']))]
+    soup = soupify(deck_url).findAll("div", {"data-state": True})
+
+    string_link = str(soup)
+    json_file = string_link.replace('&quot;', '"')
+    json_file = json_file.split('data-state="', maxsplit=1)[-1]
+    json_file = json.loads(json_file.split('" data-translations', maxsplit=1)[0])
+
+    playgwent_deck = [[] for n in range(len(json_file['guide']['deck']['cards']))]
 
     for num in range(len(playgwent_deck)):
         playgwent_deck[num].append(json_file['guide']['deck']['cards'][num]['localizedName'])
@@ -325,7 +329,7 @@ def getPlayGwentDeck(message):
         playgwent_deck[num].append(int(json_file['guide']['deck']['cards'][num]['power']))
         playgwent_deck[num].append(int(json_file['guide']['deck']['cards'][num]['provisionsCost']))
 
-    #sort in descending order from the provisions cost
+    #sort the array in descending order from the provisions cost
     playgwent_deck.sort(key=lambda x: x[5], reverse=True)
 
     faction_leader = json_file['guide']['deck']['leader']['localizedName']
@@ -365,9 +369,10 @@ def getPlayGwentDeck(message):
     embed.add_field(name="Scraps Cost:", value=crafting_cost, inline=True)
     embed.add_field(name="Provisions Cost:", value=provisions_cost, inline=True)
     embed.add_field(name='Cards:', value=cards_print)
-    embed.set_footer(text="PlayGwent - Deck Library - {} at {}".format(time.strftime('%A'), time.strftime('%X')), icon_url=playgwent_icon_url)
+    embed.set_footer(text="PlayGwent - Deck Library", icon_url=playgwent_icon_url)
 
     return embed
+
 
 @client.event
 async def on_ready():
@@ -402,7 +407,7 @@ async def on_message(message):
     if message.content.startswith('!rankings'):
         embed = getRankings('Rankings')
         await client.send_message(message.channel, embed=embed)
-    if '/decks/guides/' in message.content:
+    if message.content.startswith('!deck'):
         embed = getPlayGwentDeck(message)
         await client.send_message(message.channel, embed=embed)
 
