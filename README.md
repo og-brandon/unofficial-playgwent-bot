@@ -28,6 +28,3 @@ List of functions:
 ---
   
 <p align="center"><img src="gwent bot challenger.PNG" height="550"/></p>
-
----
-  
